@@ -1,0 +1,5 @@
+{
+  "name": "CloudGrep Workspace",
+  "description": "A high-performance, cloud-based development environment with VM lifecycle controls, VS Code integration, and seamless workspace sharing.",
+  "requestFramePermissions": []
+}
