@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { VMStatus, Workspace, Snapshot, Port } from '../types';
 import { Icons } from '../constants';
+import { config } from '../config';
 
 interface WorkspaceEditorProps {
   workspace: Workspace;
@@ -21,66 +22,81 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
     { port: 8080, url: 'https://8080-ws-1.grep.ws', status: 'active' }
   ]);
   const [savingProgress, setSavingProgress] = useState(0);
-  const [terminalLines, setTerminalLines] = useState<string[]>([
-    '[system] instance boot successful.',
-    '[system] mounting /dev/xvda1 to /mnt/code',
-    '[system] starting vs-code-server@4.12.0',
-    '[info] port 8080 exported via cloud-bridge'
-  ]);
+  const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [terminalInput, setTerminalInput] = useState('');
+  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
   
   const terminalRef = useRef<HTMLDivElement>(null);
+
+  // WebSocket Connection for Terminal
+  useEffect(() => {
+    const ws = new WebSocket(`${config.WS_ENDPOINT}/workspaces/${workspace.id}/terminal`);
+
+    ws.onopen = () => {
+        setIsConnected(true);
+        setTerminalLines(prev => [...prev, '[system] Connected to cloud terminal session...']);
+    };
+
+    ws.onmessage = (event) => {
+        setTerminalLines(prev => [...prev, event.data]);
+    };
+
+    ws.onclose = () => {
+        setIsConnected(false);
+        setTerminalLines(prev => [...prev, '[system] Connection lost. Reconnecting...']);
+    };
+
+    ws.onerror = () => {
+        // Fallback for demo if backend is missing
+        if (!isConnected) {
+            setTerminalLines(prev => [...prev, '[warn] Remote terminal unavailable. Falling back to local shell.']);
+        }
+    };
+
+    setSocket(ws);
+
+    return () => {
+        ws.close();
+    };
+  }, [workspace.id]);
+
 
   const handleTerminalSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!terminalInput.trim()) return;
 
     const cmd = terminalInput.trim();
-    const newLines = [...terminalLines, `cloud-node@grep:~$ ${cmd}`];
 
-    switch (cmd.toLowerCase()) {
-      case 'clear':
-        setTerminalLines([]);
-        break;
-      case 'help':
-        setTerminalLines([...newLines, 'Available commands: help, clear, ls, status, ports, exit']);
-        break;
-      case 'ls':
-        setTerminalLines([...newLines, 'src  components  public  package.json  tsconfig.json  README.md']);
-        break;
-      case 'status':
-        setTerminalLines([...newLines, `VM Status: ${workspace.status}`, `Memory: 2.4GB / 4GB`, `CPU: 12%`]);
-        break;
-      case 'ports':
-         setTerminalLines([...newLines, 'Active Ports:', '8080: http://localhost:8080']);
-         break;
-      default:
-        setTerminalLines([...newLines, `bash: command not found: ${cmd}`]);
+    // If socket is connected, send command to backend
+    if (socket && isConnected && socket.readyState === WebSocket.OPEN) {
+        socket.send(cmd);
+        setTerminalLines(prev => [...prev, `cloud-node@grep:~$ ${cmd}`]);
+    } else {
+        // Local fallback logic
+        const newLines = [...terminalLines, `cloud-node@grep:~$ ${cmd}`];
+        switch (cmd.toLowerCase()) {
+            case 'clear':
+                setTerminalLines([]);
+                break;
+            case 'help':
+                setTerminalLines([...newLines, 'Available commands: help, clear, ls, status, ports, exit']);
+                break;
+            case 'ls':
+                setTerminalLines([...newLines, 'src  components  public  package.json  tsconfig.json  README.md']);
+                break;
+            case 'status':
+                setTerminalLines([...newLines, `VM Status: ${workspace.status}`, `Memory: 2.4GB / 4GB`, `CPU: 12%`]);
+                break;
+            case 'ports':
+                setTerminalLines([...newLines, 'Active Ports:', '8080: http://localhost:8080']);
+                break;
+            default:
+                setTerminalLines([...newLines, `bash: command not found: ${cmd}`]);
+        }
     }
     setTerminalInput('');
   };
-
-  useEffect(() => {
-    if (workspace.status === VMStatus.STARTING) {
-      const logs = [
-        '[net] establishing vpc tunnel...',
-        '[git] pulling objects: 100% (240/240)',
-        '[node] npm install --frozen-lockfile',
-        '[node] build process initiated',
-        '[node] ready on node-829.grep.ws'
-      ];
-      let i = 0;
-      const interval = setInterval(() => {
-        if (i < logs.length) {
-          setTerminalLines(prev => [...prev, logs[i]]);
-          i++;
-        } else {
-          clearInterval(interval);
-        }
-      }, 700);
-      return () => clearInterval(interval);
-    }
-  }, [workspace.status]);
 
   useEffect(() => {
     if (terminalRef.current) {
@@ -320,35 +336,14 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
           </div>
 
           <div className="flex-1 flex flex-col relative overflow-hidden group/editor">
-             <div className="flex-1 p-10 font-mono text-[13px] relative overflow-y-auto">
-                <div className="flex gap-12">
-                   <div className="text-zinc-800 text-right w-8 select-none leading-loose text-[11px] font-bold">
-                     {Array.from({length: 50}).map((_, i) => <div key={i}>{i+1}</div>)}
-                   </div>
-                   <div className="flex flex-col text-zinc-400 leading-loose tracking-tight whitespace-pre">
-                      <div className="text-emerald-500 font-medium">import React, {'{ useState, useEffect }'} from 'react';</div>
-                      <div className="text-indigo-400 font-medium">import {'{ motion }'} from 'framer-motion';</div>
-                      <div className="h-6"></div>
-                      <div className="flex items-center gap-2">
-                         <span className="text-purple-500">export const</span> <span className="text-blue-400">WorkspaceContainer</span> = () ={'>'} {'{'}
-                         <div className="w-1.5 h-5 bg-indigo-500 animate-pulse" />
-                      </div>
-                      <div className="pl-6"><span className="text-purple-500">const</span> [status, setStatus] = useState(VMStatus.RUNNING);</div>
-                      <div className="h-6"></div>
-                      <div className="pl-6 text-zinc-700 italic">// Connect to the Grep Cloud Node architecture</div>
-                      <div className="pl-6"><span className="text-blue-400">useEffect</span>(() ={'>'} {'{'}</div>
-                      <div className="pl-12">console.<span className="text-amber-500">log</span>(<span className="text-emerald-300">'[cloud] cluster-node initialized'</span>);</div>
-                      <div className="pl-12 text-zinc-700">// Handshake with backend VM</div>
-                      <div className="pl-6">{'}'}, []);</div>
-                      <div className="h-6"></div>
-                      <div className="pl-6"><span className="text-purple-500">return</span> (</div>
-                      <div className="pl-12">{'<'}div className=<span className="text-emerald-300">"h-full grid grid-cols-12"</span>{'>'}</div>
-                      <div className="pl-18">...</div>
-                      <div className="pl-12">{'<'}/div{'>'}</div>
-                      <div className="pl-6">);</div>
-                      <div>{'}'}</div>
-                   </div>
-                </div>
+             <div className="flex-1 relative bg-[#1e1e1e]">
+                {/* Embed VS Code Server via Iframe */}
+                <iframe
+                    src={`${config.API_ENDPOINT}/?folder=/home/coder/project`}
+                    className="w-full h-full border-none"
+                    title="VS Code Editor"
+                    sandbox="allow-same-origin allow-scripts allow-popups allow-forms"
+                />
 
                 <AnimatePresence>
                   {workspace.status === VMStatus.PAUSED && (
@@ -400,8 +395,8 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
                    <span className="text-[10px] font-black text-zinc-700 uppercase tracking-[0.2em] hover:text-zinc-300 cursor-pointer h-full flex items-center transition-colors">Port Proxy</span>
                    <div className="ml-auto flex items-center gap-6">
                       <div className="flex items-center gap-2.5">
-                         <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
-                         <span className="text-[10px] font-black text-zinc-600 uppercase tracking-tighter">WS_BRIDGE: CONNECTED</span>
+                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' : 'bg-red-500'}`} />
+                         <span className="text-[10px] font-black text-zinc-600 uppercase tracking-tighter">WS_BRIDGE: {isConnected ? 'CONNECTED' : 'DISCONNECTED'}</span>
                       </div>
                       <Icons.Trash className="w-4 h-4 text-zinc-800 hover:text-zinc-400 cursor-pointer transition-colors" />
                    </div>
