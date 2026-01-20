@@ -61,18 +61,33 @@ const App: React.FC = () => {
     setActiveWorkspaceId(null);
   };
 
-  const handleCreateWorkspace = (data: Partial<Workspace>) => {
+  const handleCreateWorkspace = (data: any) => {
     const newWsId = `ws-${Date.now()}`;
-    const newWs: Workspace = {
-      id: newWsId,
-      name: data.name || 'new-workspace',
-      repo: data.repo || 'owner/repo',
-      branch: data.branch || 'main',
-      status: VMStatus.STARTING,
-      lastActive: 'Just now',
-      isShared: false,
-      snapshotsCount: 0,
-    };
+    let newWs: Workspace;
+
+    if (data.source === 'snapshot') {
+      newWs = {
+        id: newWsId,
+        name: data.name || 'imported-snapshot',
+        repo: `snapshot/${data.snapshotId || 'unknown'}`,
+        branch: 'detached-head',
+        status: VMStatus.STARTING,
+        lastActive: 'Just now',
+        isShared: false,
+        snapshotsCount: 1, // Inherit the snapshot itself
+      };
+    } else {
+      newWs = {
+        id: newWsId,
+        name: data.name || 'new-workspace',
+        repo: data.repo || 'owner/repo',
+        branch: data.branch || 'main',
+        status: VMStatus.STARTING,
+        lastActive: 'Just now',
+        isShared: false,
+        snapshotsCount: 0,
+      };
+    }
     
     setWorkspaces(prev => [newWs, ...prev]);
     setActiveWorkspaceId(newWsId);

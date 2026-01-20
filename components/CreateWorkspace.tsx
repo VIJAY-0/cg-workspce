@@ -13,6 +13,7 @@ const CreateWorkspace: React.FC<CreateWorkspaceProps> = ({ onCancel, onCreate })
     name: '',
     repo: '',
     branch: 'main',
+    snapshotId: '',
     source: 'github'
   });
   const [isLaunching, setIsLaunching] = useState(false);
@@ -21,7 +22,7 @@ const CreateWorkspace: React.FC<CreateWorkspaceProps> = ({ onCancel, onCreate })
   const steps = [
     'Provisioning Secure VM Isolation...',
     'Allocating Compute Cluster (t3.medium)...',
-    'Cloning Source Repository Artifacts...',
+    'Hydrating Filesystem from Snapshot...',
     'Injecting VS Code Core Server...',
     'Opening Gateway Proxy to Node...'
   ];
@@ -72,11 +73,11 @@ const CreateWorkspace: React.FC<CreateWorkspaceProps> = ({ onCancel, onCreate })
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-12">
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-3 gap-6">
                    <button 
                     type="button"
                     onClick={() => setFormData({...formData, source: 'github'})}
-                    className={`flex flex-col items-start gap-6 p-8 rounded-[2rem] border transition-all text-left relative overflow-hidden group ${formData.source === 'github' ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:border-zinc-700'}`}
+                    className={`flex flex-col items-start gap-6 p-6 rounded-[2rem] border transition-all text-left relative overflow-hidden group ${formData.source === 'github' ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:border-zinc-700'}`}
                    >
                      <Icons.Github className={`w-8 h-8 ${formData.source === 'github' ? 'text-indigo-400' : 'text-zinc-600'}`} />
                      <div>
@@ -87,12 +88,23 @@ const CreateWorkspace: React.FC<CreateWorkspaceProps> = ({ onCancel, onCreate })
                    <button 
                     type="button"
                     onClick={() => setFormData({...formData, source: 'url'})}
-                    className={`flex flex-col items-start gap-6 p-8 rounded-[2rem] border transition-all text-left relative overflow-hidden group ${formData.source === 'url' ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:border-zinc-700'}`}
+                    className={`flex flex-col items-start gap-6 p-6 rounded-[2rem] border transition-all text-left relative overflow-hidden group ${formData.source === 'url' ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:border-zinc-700'}`}
                    >
                      <Icons.ExternalLink className={`w-8 h-8 ${formData.source === 'url' ? 'text-indigo-400' : 'text-zinc-600'}`} />
                      <div>
                        <span className={`font-black uppercase tracking-[0.2em] text-[10px] block mb-2 ${formData.source === 'url' ? 'text-indigo-400' : 'text-zinc-600'}`}>Remote Bundle</span>
                        <p className="text-[11px] font-medium text-zinc-500 group-hover:text-zinc-400 leading-tight">Fetch static archives or generic git endpoints.</p>
+                     </div>
+                   </button>
+                   <button
+                    type="button"
+                    onClick={() => setFormData({...formData, source: 'snapshot'})}
+                    className={`flex flex-col items-start gap-6 p-6 rounded-[2rem] border transition-all text-left relative overflow-hidden group ${formData.source === 'snapshot' ? 'bg-indigo-600/10 border-indigo-500 shadow-[0_0_40px_-10px_rgba(99,102,241,0.2)]' : 'bg-zinc-900/40 border-zinc-800/50 text-zinc-500 hover:border-zinc-700'}`}
+                   >
+                     <Icons.Save className={`w-8 h-8 ${formData.source === 'snapshot' ? 'text-indigo-400' : 'text-zinc-600'}`} />
+                     <div>
+                       <span className={`font-black uppercase tracking-[0.2em] text-[10px] block mb-2 ${formData.source === 'snapshot' ? 'text-indigo-400' : 'text-zinc-600'}`}>Import Snapshot</span>
+                       <p className="text-[11px] font-medium text-zinc-500 group-hover:text-zinc-400 leading-tight">Fork from a shared immutable checkpoint ID.</p>
                      </div>
                    </button>
                 </div>
@@ -110,28 +122,42 @@ const CreateWorkspace: React.FC<CreateWorkspaceProps> = ({ onCancel, onCreate })
                     />
                   </div>
 
-                  <div className="grid grid-cols-3 gap-6">
-                    <div className="col-span-2 relative group">
-                      <label className="absolute -top-3 left-4 px-2 bg-zinc-950 text-[10px] font-black text-zinc-600 uppercase tracking-widest group-focus-within:text-indigo-500 transition-colors">Endpoint Path</label>
+                  {formData.source === 'snapshot' ? (
+                     <div className="relative group">
+                      <label className="absolute -top-3 left-4 px-2 bg-zinc-950 text-[10px] font-black text-zinc-600 uppercase tracking-widest group-focus-within:text-indigo-500 transition-colors">Snapshot ID / Share URL</label>
                       <input 
                         type="text"
                         className="w-full bg-transparent border border-zinc-800 rounded-2xl px-6 py-5 text-white font-mono text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-zinc-800"
-                        value={formData.repo}
-                        placeholder="owner/repo"
-                        onChange={e => setFormData({...formData, repo: e.target.value})}
+                        value={formData.snapshotId}
+                        placeholder="snap-..."
+                        onChange={e => setFormData({...formData, snapshotId: e.target.value})}
                         required
                       />
                     </div>
-                    <div className="relative group">
-                      <label className="absolute -top-3 left-4 px-2 bg-zinc-950 text-[10px] font-black text-zinc-600 uppercase tracking-widest group-focus-within:text-indigo-500 transition-colors">Branch</label>
-                      <input 
-                        type="text"
-                        className="w-full bg-transparent border border-zinc-800 rounded-2xl px-6 py-5 text-white font-mono text-sm focus:outline-none focus:border-indigo-500/50 transition-all"
-                        value={formData.branch}
-                        onChange={e => setFormData({...formData, branch: e.target.value})}
-                      />
+                  ) : (
+                    <div className="grid grid-cols-3 gap-6">
+                      <div className="col-span-2 relative group">
+                        <label className="absolute -top-3 left-4 px-2 bg-zinc-950 text-[10px] font-black text-zinc-600 uppercase tracking-widest group-focus-within:text-indigo-500 transition-colors">Endpoint Path</label>
+                        <input
+                          type="text"
+                          className="w-full bg-transparent border border-zinc-800 rounded-2xl px-6 py-5 text-white font-mono text-sm focus:outline-none focus:border-indigo-500/50 transition-all placeholder:text-zinc-800"
+                          value={formData.repo}
+                          placeholder="owner/repo"
+                          onChange={e => setFormData({...formData, repo: e.target.value})}
+                          required
+                        />
+                      </div>
+                      <div className="relative group">
+                        <label className="absolute -top-3 left-4 px-2 bg-zinc-950 text-[10px] font-black text-zinc-600 uppercase tracking-widest group-focus-within:text-indigo-500 transition-colors">Branch</label>
+                        <input
+                          type="text"
+                          className="w-full bg-transparent border border-zinc-800 rounded-2xl px-6 py-5 text-white font-mono text-sm focus:outline-none focus:border-indigo-500/50 transition-all"
+                          value={formData.branch}
+                          onChange={e => setFormData({...formData, branch: e.target.value})}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                 </div>
 
                 <motion.button 
