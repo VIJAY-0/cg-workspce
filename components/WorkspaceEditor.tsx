@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { VMStatus, Workspace, Snapshot } from '../types';
+import { VMStatus, Workspace, Snapshot, Port } from '../types';
 import { Icons } from '../constants';
 
 interface WorkspaceEditorProps {
@@ -17,6 +17,9 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
   const [snapshots, setSnapshots] = useState<Snapshot[]>([
     { id: 'snap-1', workspaceId: workspace.id, name: 'Prod-ready checkpoint', createdAt: '2d ago' }
   ]);
+  const [ports, setPorts] = useState<Port[]>([
+    { port: 8080, url: 'https://8080-ws-1.grep.ws', status: 'active' }
+  ]);
   const [savingProgress, setSavingProgress] = useState(0);
   const [terminalLines, setTerminalLines] = useState<string[]>([
     '[system] instance boot successful.',
@@ -24,8 +27,38 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
     '[system] starting vs-code-server@4.12.0',
     '[info] port 8080 exported via cloud-bridge'
   ]);
+  const [terminalInput, setTerminalInput] = useState('');
   
   const terminalRef = useRef<HTMLDivElement>(null);
+
+  const handleTerminalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!terminalInput.trim()) return;
+
+    const cmd = terminalInput.trim();
+    const newLines = [...terminalLines, `cloud-node@grep:~$ ${cmd}`];
+
+    switch (cmd.toLowerCase()) {
+      case 'clear':
+        setTerminalLines([]);
+        break;
+      case 'help':
+        setTerminalLines([...newLines, 'Available commands: help, clear, ls, status, ports, exit']);
+        break;
+      case 'ls':
+        setTerminalLines([...newLines, 'src  components  public  package.json  tsconfig.json  README.md']);
+        break;
+      case 'status':
+        setTerminalLines([...newLines, `VM Status: ${workspace.status}`, `Memory: 2.4GB / 4GB`, `CPU: 12%`]);
+        break;
+      case 'ports':
+         setTerminalLines([...newLines, 'Active Ports:', '8080: http://localhost:8080']);
+         break;
+      default:
+        setTerminalLines([...newLines, `bash: command not found: ${cmd}`]);
+    }
+    setTerminalInput('');
+  };
 
   useEffect(() => {
     if (workspace.status === VMStatus.STARTING) {
@@ -73,6 +106,22 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
         setSnapshots([{ id: `snap-${Date.now()}`, workspaceId: workspace.id, name, createdAt: 'Just now' }, ...snapshots]);
       }
     }, 100);
+  };
+
+  const handleCreatePort = (portNum: number) => {
+    if (ports.some(p => p.port === portNum)) return;
+    const newPort: Port = {
+        port: portNum,
+        url: `https://${portNum}-${workspace.id}.grep.ws`,
+        status: 'active'
+    };
+    setPorts([...ports, newPort]);
+    setTerminalLines(prev => [...prev, `[net] forwarding port ${portNum} -> ${newPort.url}`]);
+  };
+
+  const handleDeletePort = (portNum: number) => {
+      setPorts(ports.filter(p => p.port !== portNum));
+      setTerminalLines(prev => [...prev, `[net] stopped forwarding port ${portNum}`]);
   };
 
   return (
@@ -158,7 +207,8 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
             { id: 'explorer', icon: Icons.Files },
             { id: 'search', icon: Icons.Search },
             { id: 'git', icon: Icons.Git },
-            { id: 'snapshots', icon: Icons.Save }
+            { id: 'snapshots', icon: Icons.Save },
+            { id: 'ports', icon: Icons.ExternalLink }
           ].map((item) => (
             <button 
               key={item.id}
@@ -179,7 +229,7 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
         {/* Dynamic Sidebar */}
         <div className="w-80 bg-[#0c0c0c] border-r border-zinc-900/50 flex flex-col shrink-0 relative z-20">
           <div className="p-6 uppercase text-[10px] font-black text-zinc-600 tracking-[0.3em] flex justify-between items-center">
-            <span>{activeTab === 'snapshots' ? 'Snapshot Vault' : 'Project Node'}</span>
+            <span>{activeTab === 'snapshots' ? 'Snapshot Vault' : activeTab === 'ports' ? 'Network Ports' : 'Project Node'}</span>
             <Icons.More className="w-4 h-4 cursor-pointer hover:text-zinc-300" />
           </div>
           
@@ -199,6 +249,48 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
                     <div className="text-[10px] text-zinc-600 uppercase font-black tracking-widest tabular-nums">{snap.createdAt}</div>
                   </motion.div>
                 ))}
+              </div>
+            ) : activeTab === 'ports' ? (
+              <div className="flex flex-col gap-3">
+                 <div className="p-4 rounded-2xl bg-zinc-900/50 border border-zinc-800">
+                    <div className="flex gap-2 mb-3">
+                        <input type="number" id="port-input" placeholder="3000" className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500/50" onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                                const val = parseInt(e.currentTarget.value);
+                                if (val) {
+                                    handleCreatePort(val);
+                                    e.currentTarget.value = '';
+                                }
+                            }
+                        }} />
+                        <button onClick={() => {
+                            const input = document.getElementById('port-input') as HTMLInputElement;
+                            const val = parseInt(input.value);
+                            if (val) {
+                                handleCreatePort(val);
+                                input.value = '';
+                            }
+                        }} className="bg-indigo-600 hover:bg-indigo-500 text-white p-2 rounded-xl transition-colors">
+                            <Icons.Check className="w-4 h-4" />
+                        </button>
+                    </div>
+                 </div>
+                 {ports.map(port => (
+                   <div key={port.port} className="p-4 rounded-2xl border border-white/5 bg-white/[0.02] group">
+                      <div className="flex justify-between items-center mb-2">
+                         <span className="text-xs font-bold text-white font-mono">{port.port}</span>
+                         <div className="flex gap-2">
+                            <a href={port.url} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-indigo-400 transition-colors"><Icons.ExternalLink className="w-3.5 h-3.5" /></a>
+                            <button onClick={() => handleDeletePort(port.port)} className="text-zinc-500 hover:text-red-400 transition-colors"><Icons.Trash className="w-3.5 h-3.5" /></button>
+                         </div>
+                      </div>
+                      <div className="text-[10px] text-zinc-600 truncate font-mono">{port.url}</div>
+                      <div className="mt-2 flex items-center gap-1.5">
+                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 glow-emerald" />
+                         <span className="text-[9px] font-black uppercase text-zinc-500 tracking-wider">Active</span>
+                      </div>
+                   </div>
+                 ))}
               </div>
             ) : (
               <div className="flex flex-col gap-1">
@@ -323,7 +415,15 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
                    ))}
                    <div className="flex items-center gap-3 mt-4">
                      <span className="text-indigo-500 font-black tracking-tight select-none">cloud-node@grep:~$</span>
-                     <div className="w-1.5 h-4 bg-zinc-600 animate-pulse" />
+                     <form onSubmit={handleTerminalSubmit} className="flex-1">
+                        <input
+                            className="bg-transparent text-zinc-300 focus:outline-none w-full font-mono text-[11px]"
+                            value={terminalInput}
+                            onChange={e => setTerminalInput(e.target.value)}
+                            autoFocus
+                            spellCheck={false}
+                        />
+                     </form>
                    </div>
                 </div>
              </div>
@@ -357,7 +457,7 @@ const WorkspaceEditor: React.FC<WorkspaceEditorProps> = ({ workspace, onBack, on
         <SnapshotModal onCancel={() => setShowSnapshotModal(false)} onConfirm={handleCreateSnapshot} />
       )}
       {showShareModal && (
-        <ShareModal onCancel={() => setShowShareModal(false)} workspaceId={workspace.id} />
+        <ShareModal onCancel={() => setShowShareModal(false)} workspaceId={workspace.id} snapshots={snapshots} />
       )}
     </div>
   );
@@ -405,8 +505,10 @@ const SnapshotModal: React.FC<{ onCancel: () => void; onConfirm: (name: string) 
   );
 };
 
-const ShareModal: React.FC<{ onCancel: () => void; workspaceId: string }> = ({ onCancel, workspaceId }) => {
+const ShareModal: React.FC<{ onCancel: () => void; workspaceId: string; snapshots: Snapshot[] }> = ({ onCancel, workspaceId, snapshots }) => {
   const [mode, setMode] = useState<'live' | 'snapshot'>('live');
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('latest');
+
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-[50px] z-[200] flex items-center justify-center p-8">
       <motion.div 
@@ -423,7 +525,7 @@ const ShareModal: React.FC<{ onCancel: () => void; workspaceId: string }> = ({ o
           </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-6 mb-12">
+        <div className="grid grid-cols-2 gap-6 mb-8">
            <button 
             onClick={() => setMode('live')}
             className={`p-8 rounded-[2.5rem] border text-left transition-all relative overflow-hidden group ${mode === 'live' ? 'bg-indigo-600/10 border-indigo-500/50 shadow-xl shadow-indigo-500/10' : 'bg-zinc-950/50 border-zinc-900 text-zinc-600 hover:border-zinc-800'}`}
@@ -441,6 +543,29 @@ const ShareModal: React.FC<{ onCancel: () => void; workspaceId: string }> = ({ o
               <p className="text-[11px] text-zinc-500 leading-tight font-medium">Recipients receive an isolated copy based on current filesystem state.</p>
            </button>
         </div>
+
+        <AnimatePresence>
+            {mode === 'snapshot' && (
+                <motion.div
+                    initial={{ height: 0, opacity: 0, marginBottom: 0 }} animate={{ height: 'auto', opacity: 1, marginBottom: 32 }} exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                    className="overflow-hidden"
+                >
+                    <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800">
+                        <label className="block text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-2">Select Checkpoint</label>
+                        <select
+                            value={selectedSnapshotId}
+                            onChange={(e) => setSelectedSnapshotId(e.target.value)}
+                            className="w-full bg-black border border-zinc-800 rounded-xl px-4 py-3 text-xs text-white focus:outline-none focus:border-indigo-500/50"
+                        >
+                            <option value="latest">Latest State (Current)</option>
+                            {snapshots.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.createdAt})</option>
+                            ))}
+                        </select>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
 
         <div className="space-y-8">
            <div className="group">
