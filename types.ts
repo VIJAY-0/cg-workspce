@@ -26,4 +26,10 @@ export interface Snapshot {
   description?: string;
 }
 
+export interface Port {
+  port: number;
+  url: string;
+  status: 'active' | 'inactive';
+}
+
 export type ViewType = 'dashboard' | 'create' | 'editor';
